@@ -69,10 +69,13 @@ def get_with_retry(
     max_retries: int = MAX_RETRIES,
     backoff_base: float = BACKOFF_BASE,
     path: str = KLINES_PATH,
+    base_url: str = BASE_URL,
+    fatal_status: dict[int, str] | None = None,
 ) -> list:
-    """GET a public futures endpoint (default: klines) with exponential backoff
-    on network errors, 429 and 5xx. HTTP 418 (IP ban) raises immediately."""
-    url = BASE_URL + path
+    """GET a public endpoint (default: Binance klines) with exponential backoff
+    on network errors, 429 and 5xx. HTTP 418 (IP ban) raises immediately, as does
+    any status in `fatal_status` (status -> message), which is never retried."""
+    url = base_url + path
     last_err: Exception | None = None
     for attempt in range(max_retries + 1):
         wait = backoff_base * (2**attempt)
@@ -83,6 +86,8 @@ def get_with_retry(
         else:
             if resp.status_code == 200:
                 return resp.json()
+            if fatal_status and resp.status_code in fatal_status:
+                raise RuntimeError(fatal_status[resp.status_code])
             if resp.status_code == 418:
                 retry_after = resp.headers.get("Retry-After")
                 detail = f" Retry-After: {retry_after}." if retry_after else ""

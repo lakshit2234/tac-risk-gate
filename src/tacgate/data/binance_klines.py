@@ -50,6 +50,10 @@ DEFAULT_OUT = Path("data/raw/binance_TACUSDT_1m.csv")
 log = logging.getLogger(__name__)
 
 
+class IPBannedError(RuntimeError):
+    """HTTP 418: the IP is banned. A RuntimeError subclass, so existing handlers still match."""
+
+
 def parse_utc_ms(text: str) -> int:
     """Parse 'YYYY-MM-DD' or ISO datetime (assumed UTC if naive) to epoch ms."""
     dt = datetime.fromisoformat(text)
@@ -91,7 +95,7 @@ def get_with_retry(
             if resp.status_code == 418:
                 retry_after = resp.headers.get("Retry-After")
                 detail = f" Retry-After: {retry_after}." if retry_after else ""
-                raise RuntimeError(
+                raise IPBannedError(
                     "HTTP 418: this IP has been banned by Binance for sending too many "
                     f"requests after rate limiting. Stop and wait; do not retry.{detail}"
                 )

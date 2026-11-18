@@ -68,9 +68,11 @@ def get_with_retry(
     sleep: Callable[[float], None] = time.sleep,
     max_retries: int = MAX_RETRIES,
     backoff_base: float = BACKOFF_BASE,
+    path: str = KLINES_PATH,
 ) -> list:
-    """GET klines with exponential backoff on network errors, 429/418 and 5xx."""
-    url = BASE_URL + KLINES_PATH
+    """GET a public futures endpoint (default: klines) with exponential backoff
+    on network errors, 429 and 5xx. HTTP 418 (IP ban) raises immediately."""
+    url = BASE_URL + path
     last_err: Exception | None = None
     for attempt in range(max_retries + 1):
         wait = backoff_base * (2**attempt)
@@ -119,23 +121,25 @@ def _row(data: bytes, span: tuple[int, int]) -> list[str]:
     return next(csv.reader([data[span[0] : span[1]].decode("utf-8", errors="replace")]), [])
 
 
-def repair_csv(path: Path) -> bool:
+def repair_csv(path: Path, columns: list[str] | None = None) -> bool:
     """Truncate a partial trailing line (crash mid-write). Returns True if repaired.
 
-    A line is kept only if it ends with a newline and has exactly len(COLUMNS)
-    columns. The header must be complete and correct, otherwise we refuse.
+    A line is kept only if it ends with a newline and has exactly len(columns)
+    columns (default: the klines COLUMNS). The header must be complete and
+    correct, otherwise we refuse.
     """
+    columns = COLUMNS if columns is None else columns
     path = Path(path)
     if not path.exists():
         return False
     data = path.read_bytes()
     spans = _complete_lines(data)
     if spans:
-        if _row(data, spans[0]) != COLUMNS:
+        if _row(data, spans[0]) != columns:
             raise ValueError(f"{path} has an unexpected header; refusing to resume")
     keep = 0
     for i, span in enumerate(spans):
-        if i == 0 or len(_row(data, span)) == len(COLUMNS):
+        if i == 0 or len(_row(data, span)) == len(columns):
             keep = span[1]
         else:
             break  # first bad line: drop it and everything after
@@ -151,11 +155,15 @@ def repair_csv(path: Path) -> bool:
     return True
 
 
-def last_saved_open_time(path: Path) -> int | None:
-    """open_time of the last COMPLETE row (newline-terminated, right column count).
+def last_saved_open_time(
+    path: Path, columns: list[str] | None = None, key_index: int = 0
+) -> int | None:
+    """Time key (column key_index, default open_time) of the last COMPLETE row
+    (newline-terminated, right column count for `columns`, default klines).
 
     Never returns a value from a partial row. Does not modify the file.
     """
+    columns = COLUMNS if columns is None else columns
     path = Path(path)
     if not path.exists() or path.stat().st_size == 0:
         return None
@@ -165,9 +173,9 @@ def last_saved_open_time(path: Path) -> int | None:
         if i == 0:
             continue  # header
         row = _row(data, span)
-        if len(row) != len(COLUMNS):
+        if len(row) != len(columns):
             break
-        last = row[0]
+        last = row[key_index]
     return int(last) if last is not None else None
 
 

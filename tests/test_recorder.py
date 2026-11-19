@@ -56,8 +56,10 @@ DEEP_BOOK = {
 class FakeApi:
     """Serves the recorder's endpoints like Binance does (history ascending within start..end, else latest rows)."""
 
-    def __init__(self, clock, days=3):
+    def __init__(self, clock, days=3, publish_delay_ms=0, taker_label_is_start=False):
         self.clock = clock
+        self.publish_delay_ms = publish_delay_ms  # a row labelled t is only visible from t + delay
+        self.taker_label_is_start = taker_label_is_start  # taker row labelled t is only visible from t + 5 min + delay
         start = clock.t - days * 86_400_000
         self.first = start - start % P
         self.calls = []
@@ -71,8 +73,11 @@ class FakeApi:
             "lastFundingRate": "0.0001", "interestRate": "0.0001", "nextFundingTime": 1_795_036_800_000, "time": 777,
         }
 
-    def available(self):
-        return list(range(self.first, self.clock.t - self.clock.t % P + 1, P))
+    def available(self, ds=None):
+        visible_until = self.clock.t - self.publish_delay_ms
+        if self.taker_label_is_start and ds is not None and ds.name == "taker_buy_sell":
+            visible_until -= P
+        return list(range(self.first, visible_until - visible_until % P + 1, P))
 
     def get(self, url, params=None, timeout=None):
         path = urlparse(url).path
@@ -83,7 +88,7 @@ class FakeApi:
             return FakeResponse(self.fail_status)
         if path in HIST_PATHS:
             ds = HIST_PATHS[path]
-            ts = self.available()
+            ts = self.available(ds)
             if "startTime" in params and "endTime" in params:
                 ts = [t for t in ts if params["startTime"] <= t <= params["endTime"]][: params["limit"]]
             else:
@@ -307,11 +312,101 @@ def run(tmp_path, api, clock, max_cycles=2, on_wait=None, interval=300):
     return code, out
 
 
-def test_next_target_is_boundary_plus_offset():
+def test_cycle_offset_is_45_seconds():
+    assert rec.CYCLE_OFFSET_MS == 45_000
+
+
+def test_next_cycle_is_the_next_boundary_plus_45_s():
     b = 1_795_023_000_000
-    assert rec.next_target_ms(b + 10_000, 300) == b + 300_000 + rec.CYCLE_OFFSET_MS
-    assert rec.next_target_ms(b + 2_000, 300) == b + rec.CYCLE_OFFSET_MS
-    assert rec.next_target_ms(b, 60) == b + rec.CYCLE_OFFSET_MS
+    assert rec.next_target_ms(b + 46_000, 300) == b + 300_000 + 45_000  # this boundary's slot has passed
+    assert rec.next_target_ms(b + 45_000, 300) == b + 300_000 + 45_000  # exactly at the target: next one
+    assert rec.next_target_ms(b + 10_000, 300) == b + 45_000  # before this boundary's slot
+    assert rec.next_target_ms(b, 300) == b + 45_000
+    assert rec.next_target_ms(b + 299_999, 300) == b + 300_000 + 45_000
+    assert rec.next_target_ms(b + 61_000, 60) == b + 60_000 + 45_000  # 60 s interval keeps the same offset
+
+
+def test_cycle_waits_at_44_s_and_runs_at_45_s(tmp_path):
+    b = NOW0 + 3 * P  # a 5-minute boundary
+    clock = Clock(b + 44_000)  # 44 s after the boundary: too early
+    api = FakeApi(clock)
+    waits, calls_before_first_cycle = [], []
+
+    def wait(seconds):
+        waits.append(seconds)
+        if len(waits) == 1:
+            calls_before_first_cycle.append(len(api.calls))
+        clock.advance(seconds * 1000)
+        return False
+
+    code = rec.run_loop(tmp_path, 300, session=api, sleep=lambda s: None, clock=clock, wait=wait,
+                        max_cycles=1, say=lambda m: None)
+    assert code == 0
+    assert waits[0] == pytest.approx(1.0)  # must wait the remaining 1 s, not run now
+    assert calls_before_first_cycle == [0]  # nothing was requested before the wait
+    assert clock.t >= b + 45_000  # the cycle ran at the 45 s mark
+
+
+def test_cycle_after_45_s_waits_for_the_next_boundary(tmp_path):
+    b = NOW0 + 3 * P
+    clock = Clock(b + 46_000)  # this boundary's slot is already gone
+    api = FakeApi(clock)
+    waits = []
+
+    def wait(seconds):
+        waits.append(seconds)
+        clock.advance(seconds * 1000)
+        return False
+
+    rec.run_loop(tmp_path, 300, session=api, sleep=lambda s: None, clock=clock, wait=wait, max_cycles=1, say=lambda m: None)
+    assert waits[0] == pytest.approx((P + 45_000 - 46_000) / 1000)  # 299 s
+
+
+def test_row_labelled_at_the_boundary_is_stored_in_that_cycle(tmp_path):
+    b = NOW0 + 3 * P
+    clock = Clock(b + 45_000)
+    api = FakeApi(clock, publish_delay_ms=21_000)  # Binance publishes the boundary row about 21 s late
+    rec.run_cycle(tmp_path, api, sleep=lambda s: None, clock=clock)
+    for ds in (OI, ds_by_name("global_long_short"), ds_by_name("top_position_long_short")):
+        rows = read_rows(ds.csv_path(tmp_path))
+        assert int(rows[-1]["timestamp"]) == b  # the row labelled AT the boundary, not the previous one
+        assert int(rows[-1]["fetched_at_ms"]) - b == 45_000
+    snap = read_rows(rec.snapshot_path(tmp_path))
+    assert int(snap[-1]["fetched_at_ms"]) == b + 45_000  # real fetch time, not the boundary
+
+
+def test_old_5_s_offset_would_have_stored_the_previous_label(tmp_path):
+    """Regression for the real-data finding: at +5 s the boundary row was not published yet."""
+    b = NOW0 + 3 * P
+    clock = Clock(b + 5_000)
+    api = FakeApi(clock, publish_delay_ms=21_000)
+    rec.run_cycle(tmp_path, api, sleep=lambda s: None, clock=clock)
+    assert int(read_rows(OI.csv_path(tmp_path))[-1]["timestamp"]) == b - P  # previous label only
+
+
+def test_late_row_is_caught_by_the_next_cycle_without_duplicates(tmp_path):
+    b = NOW0 + 3 * P
+    clock = Clock(b + 45_000)
+    api = FakeApi(clock, publish_delay_ms=60_000)  # unusually slow publish: boundary row missing in this cycle
+    rec.run_cycle(tmp_path, api, sleep=lambda s: None, clock=clock)
+    assert int(read_rows(OI.csv_path(tmp_path))[-1]["timestamp"]) == b - P
+    clock.advance(P)  # next cycle, five minutes later: latest 2 rows include the late boundary row
+    rec.run_cycle(tmp_path, api, sleep=lambda s: None, clock=clock)
+    ts = [int(r["timestamp"]) for r in read_rows(OI.csv_path(tmp_path))]
+    assert ts == sorted(set(ts))  # no duplicates
+    assert ts[-2:] == [b - P, b]  # the late row b arrived one cycle later; b + P is still hidden by the delay
+
+
+def test_expected_live_lags_open_interest_45_s_taker_5_min_45_s(tmp_path):
+    b = NOW0 + 3 * P
+    clock = Clock(b + 45_000)
+    api = FakeApi(clock, publish_delay_ms=21_000, taker_label_is_start=True)
+    rec.run_cycle(tmp_path, api, sleep=lambda s: None, clock=clock)
+    last_oi = read_rows(OI.csv_path(tmp_path))[-1]
+    assert int(last_oi["fetched_at_ms"]) - int(last_oi["timestamp"]) == 45_000
+    last_taker = read_rows(TAKER.csv_path(tmp_path))[-1]
+    assert int(last_taker["timestamp"]) == b - P  # label is the period START: the period [b-5m, b) just closed
+    assert int(last_taker["fetched_at_ms"]) - int(last_taker["timestamp"]) == P + 45_000  # 5 min 45 s
 
 
 def test_run_records_all_datasets_and_snapshot_with_fetched_at(tmp_path):

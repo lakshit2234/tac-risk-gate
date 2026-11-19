@@ -44,7 +44,13 @@ HIST_LIMIT = 500  # documented maximum for the /futures/data endpoints (the live
 RETENTION_DAYS = 30  # docs: "latest 30 days" / "latest 1 month"; live API rejects startTime older than ~31 days
 RETENTION_MS = RETENTION_DAYS * 86_400_000
 REQUEST_SLEEP = 0.3
-CYCLE_OFFSET_MS = 5_000  # run this long after each boundary so the period is closed
+# Run each cycle this long after the 5-minute boundary. Binance does NOT publish the history row labelled at a
+# boundary immediately: in the 2026-11-18 backfill the open-interest row labelled 17:25:00 was present at 17:25:21
+# (about 21 s), but at the old 5 s offset it was missing, so every live cycle stored the PREVIOUS label (5.1 min lag
+# for open interest and long/short, 10.1 min for taker) and the last period before a stop was never captured.
+# 45 s leaves roughly twice that observed 21 s publish delay as margin. It must stay below the cycle interval
+# (60 s or more). A row that is still late is caught by the next cycle, because every cycle fetches the latest 2.
+CYCLE_OFFSET_MS = 45_000
 MAX_CONSECUTIVE_FAILURES = 10
 DEPTH_LIMIT = 100
 DEPTH_BANDS_PCT = (0.5, 1.0, 2.0)
@@ -281,7 +287,8 @@ def build_snapshot(prem, depth, fetched_at_ms: int) -> list:
 # --------------------------------------------------------------- run loop ---
 
 def record_latest(data_dir: Path, ds: Dataset, session, sleep, clock) -> int:
-    """Append the newest closed period(s). limit=2 so a period that appears a moment late is still caught."""
+    """Append the newest closed period(s). limit=2 so a period that appears a moment late is still caught
+    by the next cycle; rows already saved are skipped (dedupe by timestamp)."""
     path = ds.csv_path(data_dir)
     page = fetch_dataset_page(session, ds, sleep, limit=2)
     fetched = clock()
@@ -300,7 +307,9 @@ def record_snapshot(data_dir: Path, session, sleep, clock) -> None:
     prem = get_with_retry(session, {"symbol": SYMBOL}, sleep=sleep, path="/fapi/v1/premiumIndex")
     sleep(0.2)
     depth = get_with_retry(session, {"symbol": SYMBOL, "limit": DEPTH_LIMIT}, sleep=sleep, path="/fapi/v1/depth")
-    fetched = clock()  # after BOTH responses: everything in the row was known by this time
+    # Snapshot fetched_at_ms is the REAL fetch time (about boundary + CYCLE_OFFSET_MS plus request time), never the
+    # boundary itself: it is taken after BOTH responses, so everything in the row was known by that moment.
+    fetched = clock()
     row = build_snapshot(prem, depth, fetched)
     append_rows(snapshot_path(data_dir), SNAPSHOT_COLUMNS, [row])
 

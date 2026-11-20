@@ -120,3 +120,14 @@ CoinGecko and DeFiLlama rate limits and terms of use (docs gave no numbers; I on
 - **Skipped:** DeFiLlama emissions, CoinMarketCap, the unlock websites, and big-protocol TVL.
 - **Known limitation:** unlock timing and circulating supply history are not obtainable for free, so the risk gate cannot rely on them.
 - **Event labels:** defined by what the data shows. The cause is written "unverified" unless it is sourced.
+
+## Errata and updates (2026-11-20)
+
+1. **DeFiLlama price had no missing days.** The earlier claim that the price series had missing days (2025-07-17, 07-22, 07-27, 07-31, 2026-04-30 and 2026-07-07) was wrong. There are 0 missing days in 493 points. My floor-based day check was the error: price timestamps sit seconds either side of a UTC midnight, so they must be assigned to the nearest midnight.
+2. **Circulating supply.**
+   - Binance `openInterestHist` returns `CMCCirculatingSupply` as the 4th field. Its history is only about 30 days, and the recorder stores it going forward.
+   - CoinGecko market_cap divided by price equals the same CMC supply. It is not independent information, but it is a usable derived circulating-supply history, and it is robust to CoinGecko's price errors.
+   - The earlier limitation "circulating supply history not obtainable" is softened accordingly.
+   - Unlock timing is still not obtainable for free.
+   - Supply steps in the derived series can be labelled "supply step" events, with cause "unverified".
+3. **Look-ahead rule.** CoinGecko's daily point for 2026-11-19 00:00 UTC already reflected a supply update that Binance only published at 02:35 UTC that day (inference, not verified). All daily external rows (CoinGecko, DeFiLlama TVL, DeFiLlama price) must therefore be treated as known at timestamp + 24 hours, never earlier.

@@ -119,3 +119,13 @@ Findings from the data (not fixed here):
 - Any CoinGecko row more than 2 percent away from the Binance price is excluded from features.
 - A derived supply step counts as an event only if it persists for at least 3 days. One-day reversals look like sampling noise.
 - On 2026-08-23 both CoinGecko and DeFiLlama are about 38 percent below Binance, while Bybit agrees with Binance (00:00 UTC 1m open: Binance 0.001648, Bybit 0.001647; CoinGecko 0.00102, DeFiLlama 0.00102). Hypothesis: the spot or aggregator price diverged from the perpetuals after the exploit. This is unverified and to be investigated.
+
+## Aug 2026 price divergence (correction of an earlier hypothesis)
+
+| Date | What was tried | Result |
+|------|----------------|--------|
+| 2026-11-20 | `python -m tacgate.data.divergence_check` (read-only on local files, plus ONE Binance spot request, `--fetch-spot`) for 2026-08-20 to 2026-08-26 UTC. Report: docs/aug_2026_divergence_report.md. Tests: 24 synthetic (380 total pass). | **Correction: the earlier hypothesis that the spot or aggregator price crashed while the perps held is rejected.** Both the Binance and the Bybit perps fell from about 0.0025 to about 0.00104 on 2026-08-22 at 20:20 UTC (Binance low 0.00104, Bybit low 0.001051) and recovered within hours, so the perps did not hold. The Binance spot TACUSDT request returned HTTP 400, so the spot test could not be run; the verdict is "cannot tell". A missing Binance spot market is likely but unverified (the response body was not kept, and I did not retry). On 2026-08-23 both CoinGecko and DeFiLlama show about 0.00102, which is near the perp crash low (2% below it) and 38% below the perp at 00:00 UTC (0.001648); the value is stamped 3.7 hours after the low, when the perp was already near 0.00165. Cause unverified. |
+
+**Rule extended:** any daily external price (CoinGecko or DeFiLlama) more than 2 percent away from the Binance price is excluded from features.
+
+**Risk note:** this coin has had a minus 40 percent day (Binance perp 2026-08-22, 0.002755 to 0.00165) and a minus 62 percent intraday wick (the same day, low 0.00104 against the day's open of 0.002755). The gate must therefore use the intraday range, not only the daily close.

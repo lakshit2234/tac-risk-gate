@@ -14,6 +14,15 @@ Written 2026-11-20 (UTC), before any feature is built and before any rule or mod
 
 Everything not listed here stays a PROPOSAL: the 5-minute decision times, what each state means for you, the Stage A rule list, Stage B, the feature windows, the definition of the event time, the random gate, the first test month and the trial-log format.
 
+## Open questions
+
+**OPEN, not decided. An unverified hypothesis, not a finding.**
+
+- The token cliff date is 2026-07-15 (TGE + 12 months, `src/tacgate/phase2/loaders.py`, `cliff_dates`). About 42 percent of supply (investors 16.6, advisors 3.4 and team 22.1 percent, `data/static/tokenomics.csv`) starts vesting then.
+- Our bulk open interest shifts around 2026-07-12 (`bulk_metrics_history_report.md`), and our derived supply steps fall on the 16th of 2026-07, 2026-08, 2026-09 and 2026-10 (`data/static/events.csv`). The cause of either is unknown; a link to the vesting start is only a hypothesis.
+- **Consequence to settle before the label builder (task 2):** development data is mostly before the cliff and the holdout (from 2026-08-01) is entirely after it, so the label counts and every result must also be reported split at 2026-07-15.
+- Any rule based on calendar dates near the 16th would rest on about 4 points (four monthly steps). It must be logged as a trial and treated as weak.
+
 ## 1. What the gate decides
 
 At each decision time t the gate outputs one of **stay out / caution / clear**, using only rows whose known time is at or before t (known-time rules: `gate1_summary.md`, section 2). It flags danger for holding leveraged exposure (cap 3x, isolated margin, 1% risk per trade, stop-loss at entry: `CLAUDE.md`) in the next H hours. It does not predict price direction, and it never places orders (`CLAUDE.md`: market data is read-only).

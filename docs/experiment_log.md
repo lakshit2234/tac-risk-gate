@@ -210,3 +210,11 @@ Decisions on the Phase 2 plan (decided by the user on 2026-11-21):
 Additions to the Phase 2 loaders entry (2026-11-21):
 1. Decided by the user: the open-interest jump rule is accepted as implemented and applies only to the bulk archive file, never to the live recorder (a real fall of more than 50% in open interest in a liquidation cascade must not be masked as a glitch); the text is in the check report and its generator, with one test.
 2. Open question added to docs/phase2_plan.md (OPEN, an unverified hypothesis): the 2026-07-15 cliff (about 42% of supply starts vesting), the bulk open-interest shift around 2026-07-12 and the supply steps on the 16th of 2026-07 to 2026-10; to settle before the label builder: label counts and every result must also be reported split at 2026-07-15, and a calendar-date rule would rest on about 4 points.
+
+## Phase 2 task 2: label builder
+
+| Date | What was tried | Result |
+|------|----------------|--------|
+| 2026-11-21 | Wrote `src/tacgate/phase2/labels.py` (`build_labels`, `split_periods`, episodes, a check-report CLI) and `tests/test_labels.py` (synthetic known answers, truncation, label_known_at, NaN not 0, long/short apart, reproduction of docs/label_counts.md). `label_counts.py` now calls the builder (one implementation). Variants tried: none beyond the plan's horizons (1, 4, 24 h) and thresholds (10, 20, 30%); no selection. | All 18 cells and the 3 valid-decision-time counts of docs/label_counts.md reproduce exactly (positives and episodes). Split counts in `docs/phase2_labels_check.md`: 24 h / 30% has 7 / 4 long and 23 / 5 short episodes in development / holdout, and 7 long / 22 short before the cliff against 4 long / 6 short after; no development, holdout or cliff part is below 4 episodes (holdout long is exactly 4); most single months are. Nothing validated: counts only, no model. |
+
+OPEN note added to docs/phase2_plan.md: the 24 h / 30% holdout has exactly 4 long episodes (5 short), so the long side is at the 4-episode limit and the plan must decide in advance whether it is reported as too few for a verdict and whether the short side alone can carry a go.

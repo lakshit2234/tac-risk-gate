@@ -23,6 +23,7 @@ import pandas as pd
 
 from tacgate.data import binance_klines as bk
 from tacgate.data.bulk_availability import read_complete
+from tacgate.phase2.labels import Minutes, adverse_frame, episodes, forward_extreme, minutes_from_klines  # noqa: F401  (re-exported; one implementation)
 
 MIN_MS = 60_000
 GRID_MS = 300_000  # decision times: every 5-minute boundary
@@ -51,42 +52,15 @@ def month_of(ms: int | float) -> str:
 
 # ----------------------------------------------------------------- loading ---
 
-@dataclass
-class Minutes:
-    """The 1m candles on a complete minute grid (a missing minute is NaN)."""
-    first_open: int
-    high: np.ndarray
-    low: np.ndarray
-    close: np.ndarray
-
-    @property
-    def n(self) -> int:
-        return len(self.close)
-
-
 def load_minutes(path: Path) -> Minutes:
+    """The 1m klines file as a minute grid (a missing minute is NaN). The grid itself is built by the label builder (labels.minutes_from_klines)."""
     df = read_complete(Path(path))
-    t = pd.to_numeric(df["open_time"]).astype("int64").to_numpy()
-    first, last = int(t.min()), int(t.max())
-    n = (last - first) // MIN_MS + 1
-    idx = (t - first) // MIN_MS
-
-    def col(name: str) -> np.ndarray:
-        a = np.full(n, np.nan)
-        a[idx] = pd.to_numeric(df[name]).to_numpy()
-        return a
-
-    return Minutes(first, col("high"), col("low"), col("close"))
+    k = pd.DataFrame({"ts_ms": pd.to_numeric(df["open_time"]).astype("int64"), "high": pd.to_numeric(df["high"]),
+                      "low": pd.to_numeric(df["low"]), "close": pd.to_numeric(df["close"])})
+    return minutes_from_klines(k)
 
 
 # ------------------------------------------------------------------- labels ---
-
-def forward_extreme(values: np.ndarray, width: int, kind: str) -> np.ndarray:
-    """out[j] = min (or max) of values[j : j + width]; NaN where the window is incomplete or has a missing minute."""
-    s = pd.Series(values[::-1])
-    r = s.rolling(width, min_periods=width).min() if kind == "min" else s.rolling(width, min_periods=width).max()
-    return r.to_numpy()[::-1]
-
 
 @dataclass
 class Adverse:
@@ -96,36 +70,18 @@ class Adverse:
 
 
 def adverse_moves(m: Minutes, horizon_h: int) -> Adverse:
-    """The worst move against a long and against a short in the H hours after each decision time (every 5-minute boundary)."""
-    width = horizon_h * 60
-    fmin, fmax = forward_extreme(m.low, width, "min"), forward_extreme(m.high, width, "max")
-    # decision time t = open_time of candle j; the close C_t is the close of candle j - 1
-    j = np.arange(1, m.n)
-    t = m.first_open + j * MIN_MS
-    keep = (t % GRID_MS == 0)
-    j, t = j[keep], t[keep]
-    c = m.close[j - 1]
-    ok = ~np.isnan(c) & ~np.isnan(fmin[j]) & ~np.isnan(fmax[j])
-    j, t, c = j[ok], t[ok], c[ok]
-    return Adverse(t, fmin[j] / c - 1.0, fmax[j] / c - 1.0)
+    """The worst move against a long and against a short in the H hours after each decision time (every 5-minute boundary).
+
+    This is the label builder (labels.adverse_frame) restricted to the complete rows, so the count table and the label table cannot disagree."""
+    f = adverse_frame(m, horizon_h, step_min=GRID_MS // MIN_MS)
+    f = f[f["complete"]]
+    return Adverse(f["decision_ms"].to_numpy(), f["adverse_long"].to_numpy(), f["adverse_short"].to_numpy())
 
 
 def positives(a: Adverse, side: str, threshold: float) -> np.ndarray:
     """Decision times (ms) at which the side would have been hit within the horizon."""
     mask = a.adverse_long <= -threshold if side == "long" else a.adverse_short >= threshold
     return a.t_ms[mask]
-
-
-def episodes(times_ms: np.ndarray, horizon_h: int) -> list[tuple[int, int, int]]:
-    """Merge positive decision times that are closer than H into episodes: (start_ms, end_ms, positive decision times)."""
-    if len(times_ms) == 0:
-        return []
-    t = np.sort(times_ms)
-    cuts = np.flatnonzero(np.diff(t) >= horizon_h * HOUR_MS) + 1
-    out = []
-    for g in np.split(t, cuts):
-        out.append((int(g[0]), int(g[-1]), int(len(g))))
-    return out
 
 
 # ------------------------------------------------------------------ counting ---

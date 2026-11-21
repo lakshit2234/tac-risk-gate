@@ -227,3 +227,12 @@ OPEN note added to docs/phase2_plan.md: the 24 h / 30% holdout has exactly 4 lon
 
 OPEN note added to docs/phase2_plan.md: 17.5% of Bybit 1m candles have zero volume (no missing minutes), so bybit_gap may show a stale-price gap; setting it to NaN when Bybit window volume is zero is a later option and must be logged as a trial first.
 OPEN note added to docs/phase2_plan.md: the listing week in development data (volume_ratio up to about 760, range_24h up to about 17.8) may drive any rule using them; every later result must also be reported without the first 7 days after listing.
+
+## Phase 2 task 4: walk-forward harness
+
+| Date | What was tried | Result |
+|------|----------------|--------|
+| 2026-11-21 | Wrote `src/tacgate/phase2/walkforward.py` and `tests/test_walkforward.py` (22 tests, synthetic data only): rule interface (one feature row, states 0/1/2, long and short separate), expanding monthly walk-forward from 2025-09 with the embargo enforced in code, append-only trial log, one-shot holdout lock (not called), fixed metrics (capture with the 1 h / 15 min / 4 h leads, shares, lead time, 1000-shift random gate with seed 20261121, exact interval, TOO FEW below 4 episodes) and the splits. Logged and evaluated three baseline trials T0001 always stay out, T0002 never, T0003 random (sanity anchors, no real rule) on the development period only. | Harness checked: always stay out captures 100% at 100% share, never 0% at 0%, random about 10% share; the primary 24 h / 30% view has 5 long and 20 short episodes in the test months (2025-09 to 2026-07), and every cliff part is TOO FEW on the long side. Results in `data/processed/trials/` (git-ignored). The Clopper-Pearson interval is two-sided 95% (0 of 4: upper 0.602, 4 of 4: lower 0.398, matching the plan's 0.025^(1/n)); the 0.527 and 0.473 in the task are the one-sided 95% limits (alpha 0.10), both checked in a test. Nothing validated. |
+
+Decisions note added to docs/phase2_walkforward_check.md: the interval is the two-sided 95% exact Clopper-Pearson interval as asked; the 0.527 and 0.473 in the original test spec were one-sided limits, a mistake by Claude, not by the code.
+OPEN note added to docs/phase2_plan.md: only 5 long and 20 short episodes in the test months (1 short after the cliff); 5 of 5 has a lower limit of about 0.48, so the 50% kill criterion cannot be shown on the long side; settle before any real rule whether long is declared too few, whether short alone decides, and how one post-cliff episode is described.

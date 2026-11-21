@@ -236,3 +236,13 @@ OPEN note added to docs/phase2_plan.md: the listing week in development data (vo
 
 Decisions note added to docs/phase2_walkforward_check.md: the interval is the two-sided 95% exact Clopper-Pearson interval as asked; the 0.527 and 0.473 in the original test spec were one-sided limits, a mistake by Claude, not by the code.
 OPEN note added to docs/phase2_plan.md: only 5 long and 20 short episodes in the test months (1 short after the cliff); 5 of 5 has a lower limit of about 0.48, so the 50% kill criterion cannot be shown on the long side; settle before any real rule whether long is declared too few, whether short alone decides, and how one post-cliff episode is described.
+
+## Phase 2 task 5: Gate 2 baseline rules
+
+| Date | What was tried | Result |
+|------|----------------|--------|
+| 2026-11-22 | Wrote `src/tacgate/phase2/rules_baseline.py` and `tests/test_rules_baseline.py` (17 tests). Four percentile rules fixed by the user on 2026-11-22: R1 rv_1h, R2 latest known funding rate (long high, short low), R3 bybit_gap_abs_max_1h, R4 drawdown_1h (long, low) and runup_1h (short, high); stay out at the 95th (5th) percentile, caution at the 90th (10th) of the training rows, NaN = clear. Logged T0004 to T0007 (family stage_a_baseline) before evaluating them on the development period only; no other threshold, window or variant tried; holdout not read. | Descriptive only, no rule chosen (7 trials so far). Zero NaN decision times for all four rules in the test months. R1, R3, R4 stay out 5 to 9% of the time; R2 short stays out 44.9% because funding sits at its 0.00005 floor in about 58% of rows (ties at the cut-off; not changed, marked OPEN). R4 lead times are not near zero (medians 68 and 53 min). 5 long and 20 short episodes: intervals wide, cliff parts TOO FEW. Report `docs/phase2_gate2_baselines.md`. |
+
+OPEN note added to the Gate 2 report and docs/phase2_plan.md: episodes cluster in time, so later episodes of a cluster count as captured and the capture rates overstate skill; a cluster-aware reported-only metric (first episode of each 24 h cluster) is needed before any real rule.
+OPEN note added to both: capture does not measure the adverse move still ahead after the first alarm (R4 reacts to the same move); a remaining-move metric must be defined before any real rule.
+OPEN note added to both: any rule that must beat these baselines at Gate 2 faces R1 and R4 as the bar.

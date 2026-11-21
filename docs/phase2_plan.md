@@ -23,6 +23,8 @@ Everything not listed here stays a PROPOSAL: the 5-minute decision times, what e
 - **Consequence to settle before the label builder (task 2):** development data is mostly before the cliff and the holdout (from 2026-08-01) is entirely after it, so the label counts and every result must also be reported split at 2026-07-15.
 - Any rule based on calendar dates near the 16th would rest on about 4 points (four monthly steps). It must be logged as a trial and treated as weak.
 - **OPEN, not decided:** for the primary 24 h / 30 percent view the holdout has exactly 4 long episodes and 5 short, and the development period has 7 long and 23 short. The holdout rule "no go below 4 episodes" is therefore at its limit for the long side, and any later data change that removes one long episode would make the long-side holdout unusable. Consequence to settle before any rule is evaluated: decide whether the long side is reported as "too few episodes for a verdict" in advance, and whether the short side alone can carry a go decision.
+- **OPEN, not decided:** 17.5 percent of Bybit 1m candles have zero volume (123,561 of 707,404) with no missing minutes, so their close may be stale and `bybit_gap` may show a gap that is not a real price difference. A later option is to set the gap to NaN when Bybit volume in the window is zero; this must be logged as a trial before it is evaluated.
+- **OPEN, not decided:** development data includes the listing week, where `volume_ratio` reaches about 760 and `range_24h` about 17.8. Any rule using these features may be learning from listing-week behaviour, so every later result using them must also be reported without the first 7 days after listing.
 
 ## 1. What the gate decides
 

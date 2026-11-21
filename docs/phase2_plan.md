@@ -22,6 +22,7 @@ Everything not listed here stays a PROPOSAL: the 5-minute decision times, what e
 - Our bulk open interest shifts around 2026-07-12 (`bulk_metrics_history_report.md`), and our derived supply steps fall on the 16th of 2026-07, 2026-08, 2026-09 and 2026-10 (`data/static/events.csv`). The cause of either is unknown; a link to the vesting start is only a hypothesis.
 - **Consequence to settle before the label builder (task 2):** development data is mostly before the cliff and the holdout (from 2026-08-01) is entirely after it, so the label counts and every result must also be reported split at 2026-07-15.
 - Any rule based on calendar dates near the 16th would rest on about 4 points (four monthly steps). It must be logged as a trial and treated as weak.
+- **OPEN, not decided:** for the primary 24 h / 30 percent view the holdout has exactly 4 long episodes and 5 short, and the development period has 7 long and 23 short. The holdout rule "no go below 4 episodes" is therefore at its limit for the long side, and any later data change that removes one long episode would make the long-side holdout unusable. Consequence to settle before any rule is evaluated: decide whether the long side is reported as "too few episodes for a verdict" in advance, and whether the short side alone can carry a go decision.
 
 ## 1. What the gate decides
 

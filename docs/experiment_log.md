@@ -246,3 +246,11 @@ OPEN note added to docs/phase2_plan.md: only 5 long and 20 short episodes in the
 OPEN note added to the Gate 2 report and docs/phase2_plan.md: episodes cluster in time, so later episodes of a cluster count as captured and the capture rates overstate skill; a cluster-aware reported-only metric (first episode of each 24 h cluster) is needed before any real rule.
 OPEN note added to both: capture does not measure the adverse move still ahead after the first alarm (R4 reacts to the same move); a remaining-move metric must be defined before any real rule.
 OPEN note added to both: any rule that must beat these baselines at Gate 2 faces R1 and R4 as the bar.
+
+## Phase 2 task 6: cluster-aware capture and remaining move
+
+| Date | What was tried | Result |
+|------|----------------|--------|
+| 2026-11-22 | Wrote `src/tacgate/phase2/cluster_metrics.py` and `tests/test_cluster_metrics.py` (10 tests): clusters chained within 24 h, capture of the first episode of each cluster, remaining and already-happened adverse move after the first alarm (24 h look-back, 24 h horizon); reported only. Re-ran the same rules and seeded anchors on the development period (no trial rows written; trial_log.csv unchanged) after recomputing every saved metric of T0001 to T0007. | 13,894 saved values reproduced exactly, 0 differences. In the primary 24 h view clusters = episodes (5 long, 20 short), structurally, because two 24 h episodes start more than 24 h apart; the chaining only merges the 4 h and 1 h views (for example 4 h / 20% long 15 episodes in 11 clusters). Nothing ranked; no claim. Report `docs/phase2_cluster_metrics.md`. |
+
+OPEN note added to docs/phase2_cluster_metrics.md and docs/phase2_plan.md: the 24 h chaining gap cannot see multi-day clustering; a reported-only 7 day chaining sensitivity view (not tuned, not a selection criterion, clusters per side reported) is needed before any real rule is evaluated.
